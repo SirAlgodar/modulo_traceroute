@@ -1,0 +1,13 @@
+# Dependências e artefatos
+node_modules/
+
+# Ambiente
+.env
+
+# SO/Editor
+.DS_Store
+*.log
+
+# Build/temporários
+/dist/
+/.cache/

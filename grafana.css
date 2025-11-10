@@ -1,0 +1,704 @@
+:root {
+  --primary-bg: transparent;
+  --panel-bg: #1c1c1e;
+  --text-color: #d8d9da;
+  --text-secondary-color: #8e8e8e;
+  --primary-accent: #33a2e5;
+  --border-color: #323236;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --color-increase: #e54646;
+  --color-decrease: #33a2e5;
+}
+/* --- TEMA E VARIÁVEIS GLOBAIS (APENAS PARA CARDS) --- */
+.main-container {
+  max-width: 100%;
+  margin: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  /* Variáveis para consistência nos cards */
+  --card-bg-color: rgba(0, 0, 0, 0.2);
+  --card-border-color: rgba(204, 204, 220, 0.12);
+  --card-shadow-color: rgba(0, 0, 0, 0.4);
+  --text-color-primary: white;
+  --text-color-secondary: rgba(255, 255, 255, 0.85);
+  /* Branco com 85% de opacidade */
+  --accent-green: #00E96A;
+  --accent-red: #f44336;
+  --accent-orange: #ffc107;
+}
+
+.tabs {
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.main-tabs {
+  display: flex;
+}
+
+.tab-btn {
+  padding: 10px 15px;
+  cursor: pointer;
+  border: none;
+  background-color: transparent;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: white;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-btn.active {
+  border-bottom-color: #00E96A;
+  font-weight: 600;
+  color: #00E96A;
+
+}
+
+.tab-btn.icon-btn {
+  padding: 10px;
+  font-size: 1.2rem;
+  margin-right: 10px;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+  flex-grow: 1;
+}
+
+#dashboard-view.tab-content.active {
+  display: grid;
+  flex-grow: 1;
+}
+
+/* --- MUDANÇA 1: Faz a aba de histórico ser um container flex --- */
+#history-view.tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+#dashboard-view {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 15px;
+  grid-auto-rows: 1fr;
+}
+
+.card {
+  background-color: var(--card-bg-color);
+  /* Usando variável */
+  border-radius: 1.5rem;
+  /* box-shadow: 0 0 12px var(--accent-green); */
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease-in-out;
+  border: 1px solid var(--card-border-color);
+  /* Usando variável */
+
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px var(--card-shadow-color);
+}
+
+.card.loading {
+  align-items: center;
+  justify-content: center;
+}
+
+.card.error {
+  border-left-color: var(--accent-red);
+  /* Usando variável */
+}
+
+.card.highlighted {
+  border: 1px solid var(--card-border-color);
+  /* Bordar verde */
+  /* box-shadow: 0 0 12px var(--accent-green); */
+  /* Adiciona o brilho (box-shadow) verde */
+  box-shadow: 0 0 12px var(--accent-green);
+}
+
+.card.highlighted:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px var(--card-shadow-color);
+
+
+}
+
+/* --- ATUALIZADO --- */
+.card-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  width: 100%;
+  justify-content: space-between;
+  /* Para espaçar logo, texto e ícone */
+}
+
+/* --- ATUALIZADO --- */
+.card-header-text {
+  flex-grow: 1;
+  overflow: hidden;
+  text-align: center;
+}
+
+/* --- ATUALIZADO --- */
+.card-header-text h3 {
+  margin-left: 1rem;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-right: 1rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-color-primary);
+  /* Usando variável */
+}
+
+/* --- ATUALIZADO --- */
+.card-header-text small {
+  font-size: 0.8rem;
+  color: var(--text-color-secondary);
+  /* Usando variável */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* --- ATUALIZADO --- */
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 10px;
+  width: 100%;
+  flex-grow: 1;
+  justify-content: center;
+}
+
+/* --- ATUALIZADO --- */
+.metric-group {
+  display: flex;
+  justify-content: space-around;
+  /* Mantendo o original space-around para este grupo */
+}
+
+/* --- ATUALIZADO --- */
+.metric {
+  flex-basis: 50%;
+  text-align: center;
+  padding: 0 5px;
+  box-sizing: border-box;
+}
+
+/* --- ATUALIZADO --- */
+.metric .value {
+  font-size: 2.5rem;
+  /* Aumentado */
+  font-weight: 700;
+  color: var(--text-color-primary);
+  /* Usando variável */
+  line-height: 1.2;
+}
+
+/* --- ATUALIZADO --- */
+.metric .label {
+  font-size: 0.8rem;
+  /* Diminuído */
+  color: var(--text-color-secondary);
+  /* Usando variável */
+  text-transform: uppercase;
+}
+
+/* --- ATUALIZADO --- */
+.latency-group .metric .value {
+  font-size: 2.5rem;
+  /* Aumentado */
+}
+
+/* --- ATUALIZADO --- */
+.latency-group .metric .label {
+  font-size: 0.8rem;
+}
+
+.hop-change {
+  font-size: 12px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.hop-change.increase {
+  color: var(--accent-red);
+  /* Usando variável */
+}
+
+.hop-change.decrease {
+  color: var(--accent-green);
+  /* Usando variável */
+}
+
+/* --- ATUALIZADO --- */
+.analysis-group {
+  border-top: 1px solid var(--card-border-color);
+  /* Usando variável */
+  margin-top: 10px;
+  padding-top: 10px;
+  font-size: 1rem;
+  color: var(--text-color-primary);
+  /* Usando variável */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-item {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* --- ATUALIZADO --- */
+.analysis-item .value {
+  font-weight: bold;
+  color: var(--text-color-primary);
+  /* Usando variável */
+  font-size: 1rem;
+}
+
+/* --- NOVO ESTILO ADICIONADO --- */
+.analysis-item .value.danger {
+  color: var(--accent-red);
+  /* Usando variável */
+  font-weight: 700;
+}
+
+
+.logo-container {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  position: relative;
+  background-color: rgba(255, 255, 255, 0.05);
+  /* Fundo sutil */
+  border: 1px solid rgba(204, 204, 220, 0.12);
+}
+
+.loading-circle {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid var(--card-border-color);
+  /* Usando variável */
+  border-top-color: var(--accent-green);
+  /* Usando variável */
+  animation: none;
+}
+
+.card.loading .loading-circle {
+  animation: spin 1s linear infinite;
+}
+
+.logo-container i {
+  position: relative;
+  z-index: 2;
+  color: var(--text-color-primary);
+  /* Usando variável */
+}
+
+/* --- CSS CORRIGIDO PARA O ÍCONE "i" --- */
+
+/* Esta é a DIV que serve como o círculo */
+.info-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.05);
+  /* Fundo sutil (cinza escuro) */
+  transition: background-color 0.2s ease;
+  border: 1px solid rgba(204, 204, 220, 0.12);
+}
+
+/* Este é o ícone 'i' (fa-info) DENTRO do círculo */
+.info-icon i {
+  font-size: 1.1rem;
+  /* Tamanho da letra 'i' */
+  color: var(--text-color-primary);
+  /* Cor branca */
+  line-height: 1;
+  /* Garante alinhamento vertical */
+}
+
+.info-icon:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.config-section {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  border-radius: 1.5rem;
+  margin-bottom: 20px;
+  border: 1px solid var(--card-border-color);
+  /* Usando variável */
+}
+
+.form-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+/* --- CORREÇÃO 2: Alinha o grupo de checkbox à direita --- */
+.form-group.checkbox-group {
+  margin-bottom: 15px;
+  justify-content: flex-end;
+  /* Alinha o par (check + label) à direita */
+  gap: 5px;
+  /* Espaçamento menor entre o check e o label */
+}
+
+.form-group.checkbox-group label {
+  color: white;
+  /* Usando variável */
+  cursor: pointer;
+}
+
+/* --- CORREÇÃO 1: Impede que o CHECKBOX cresça --- */
+.form-group input:not([type="checkbox"]) {
+  flex-grow: 1;
+  padding: 8px;
+  border: 1px solid var(--card-border-color);
+  /* Usando variável */
+  border-radius: 1.5rem;
+  background-color: rgba(0, 0, 0, 0.2);
+  color: var(--text-color-primary);
+  /* Usando variável */
+}
+
+/* Estilo opcional para o checkbox ficar alinhado */
+.form-group input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+
+.form-group button {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 1.5rem;
+  cursor: pointer;
+  color: white;
+}
+
+.add-btn {
+  background-color: rgba(0, 233, 106, 0.8);
+  padding: 8px 15px;
+  border: none;
+  border-radius: 1.5rem;
+  cursor: pointer;
+  color: white;
+}
+
+/* 1. Faz a aba de Configuração usar flexbox */
+#config-view.tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 2. Posiciona o botão Salvar Configurações */
+#save-settings-btn {
+  /* Empurra o botão para o final (embaixo) */
+  margin-top: auto;
+
+  /* Alinha o botão à direita */
+  align-self: flex-end;
+
+  /* Adiciona um espaçamento para não colar nas bordas */
+  margin-right: 20px;
+  margin-bottom: 20px;
+
+  /* (Opcional) Deixa o botão um pouco maior */
+  padding: 10px 20px;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.cancel-btn {
+  background-color: var(--text-color-secondary);
+  /* Usando variável */
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#targets-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#targets-list th,
+#targets-list td {
+  padding: 10px;
+  border-bottom: 1px solid var(--card-border-color);
+  /* Usando variável */
+  text-align: left;
+  font-size: 14px;
+}
+
+#targets-list td.actions {
+  text-align: right;
+}
+
+#targets-list button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-left: 10px;
+  font-size: 14px;
+}
+
+#targets-list .edit-btn {
+  color: #33a2e5;
+}
+
+#targets-list .delete-btn {
+  color: var(--accent-red);
+  /* Usando variável */
+}
+
+.target-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.target-selector .target-btn {
+  background-color: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--card-border-color);
+  /* Usando variável */
+  color: white;
+  font-weight: bold;
+  /* Usando variável */
+  padding: 8px 15px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.target-selector .target-btn:hover {
+  background-color: var(--card-border-color);
+  /* Usando variável */
+  color: var(--text-color-primary);
+  /* Usando variável */
+}
+
+.target-selector .target-btn.active {
+  background-color: var(--accent-green);
+  /* Usando variável */
+  color: white;
+  font-weight: bold;
+  border-color: var(--accent-green);
+  /* Usando variável */
+  border-radius: 1.5rem
+}
+
+/* --- MUDANÇA 2: Faz o container crescer e as linhas do grid preencherem a altura --- */
+.chart-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  flex-grow: 1;
+  /* --- MUDANÇA --- */
+  grid-auto-rows: 1fr;
+  /* --- MUDANÇA --- */
+}
+
+/* --- MUDANÇA 3: Faz o wrapper ser flex-column --- */
+.chart-wrapper {
+  background-color: var(--card-bg-color);
+  /* Usando variável */
+  padding: 20px;
+  border-radius: 1.5rem;
+  border: 1px solid var(--card-border-color);
+  /* Usando variável */
+  display: flex;
+  /* --- MUDANÇA --- */
+  flex-direction: column;
+  /* --- MUDANÇA --- */
+}
+
+.chart-wrapper h3 {
+  margin-top: 0;
+  font-size: 16px;
+  text-align: center;
+  color: var(--text-color-primary);
+  /* Usando variável */
+}
+
+/* --- MUDANÇA 4: Faz o container do gráfico crescer --- */
+.chart-wrapper #hourly-chart,
+.chart-wrapper #daily-chart {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  flex-grow: 1;
+  /* --- MUDANÇA --- */
+}
+
+.chart-wrapper svg {
+  max-width: 100%;
+  width: 100%;
+  height: 100%;
+}
+
+.chart-wrapper svg rect:hover {
+  opacity: 1 !important;
+}
+
+.chart-wrapper svg text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (max-width: 992px) {
+  .chart-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+#tooltip {
+  position: fixed;
+  display: none;
+  background-color: rgba(10, 10, 10, 0.9);
+  color: var(--text-color-primary);
+  /* Usando variável */
+  padding: 10px;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 12px;
+  max-width: 500px;
+  pointer-events: none;
+  z-index: 10000;
+  white-space: pre;
+  border: 1px solid var(--card-border-color);
+  /* Usando variável */
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.slow-hop {
+  color: var(--accent-orange);
+  /* Usando variável */
+  font-weight: bold;
+}
+
+/* --- CSS ATUALIZADO PARA O OUTPUT DO TESTE PONTUAL --- */
+.results-output {
+  background-color: rgba(0, 0, 0, 0.2);
+  /* Fundo preto para contraste */
+  border: 1px solid var(--card-border-color);
+  border-radius: 1.5rem;
+  /* Raio mais sutil */
+  padding: 20px;
+  /* Mais respiro */
+  margin-top: 20px;
+  /* font-family: 'Cascadia Code', 'Fira Code', 'monospace'; */
+  white-space: pre;
+  /* CORREÇÃO: Impede a quebra de linha */
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: auto;
+  /* ADICIONADO: Permite scroll horizontal */
+  color: white;
+  /* Usa o verde do tema */
+  font-size: 1rem;
+  /* Melhora legibilidade */
+  line-height: 1.6;
+  /* Melhora espaçamento */
+}
+
+/* --- Estilo para o Container de Busca --- */
+.search-container {
+  display: none;
+  position: relative;
+
+  /* --- MUDANÇAS AQUI --- */
+  flex-grow: 1;
+  /* 1. FAZ O CONTAINER CRESCER */
+  margin-left: 1rem;
+  /* 2. ESPAÇO DEPOIS DO "HISTÓRICO" */
+  margin-right: 1rem;
+  /* 3. ESPAÇO ANTES DA ENGRENAGEM */
+  margin-bottom: 0.5rem;
+  /* 4. ESPAÇO PARA A LINHA DE BAIXO */
+  /* --- FIM DAS MUDANÇAS --- */
+
+  align-self: center;
+}
+
+/* Ícone de lupa dentro da busca */
+.search-container i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: white;
+}
+
+/* Input da busca */
+#global-search-filter {
+  padding: 8px 15px 8px 35px;
+  border: 1px solid var(--card-border-color);
+  border-radius: 1.5rem;
+  background-color: rgba(0, 0, 0, 0.2);
+  color: white;
+
+  /* --- MUDANÇAS AQUI --- */
+  width: 100%;
+  /* 5. FAZ O INPUT PREENCHER O CONTAINER */
+  box-sizing: border-box;
+  /* 6. GARANTE QUE O PADDING NÃO QUEBRE O LAYOUT */
+  /* --- FIM DAS MUDANÇAS --- */
+
+  transition: all 0.2s ease;
+}
+
+#global-search-filter:focus {
+  outline: none;
+  border-color: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+}
