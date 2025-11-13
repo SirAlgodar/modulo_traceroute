@@ -2,11 +2,30 @@ import { exec } from "child_process";
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
-import fs from "fs";
+import fs from 'fs/promises';
+import * as fsSync from 'fs';
 import https from "https";
 import http from "http";
 import path from "path";
 import { promisify } from "util";
+import { fileURLToPath } from 'url';
+
+// ====================================================================
+// INÍCIO DA CORREÇÃO (NODE-CACHE)
+// ====================================================================
+import NodeCache from "node-cache";
+
+// stdTTL: 15 segundos. checkperiod: 20 segundos.
+// Os dados ficam no cache por 15s. A cada 20s o cache é limpo.
+const myCache = new NodeCache({ stdTTL: 15, checkperiod: 20 });
+const CACHE_KEY_HISTORY = 'history';
+const CACHE_KEY_TARGETS = 'targets';
+// ====================================================================
+// FIM DA CORREÇÃO
+// ====================================================================
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 const execAsync = promisify(exec);
@@ -20,49 +39,97 @@ const HISTORY_JSON_PATH = path.join(
   "historico_traceroute.json"
 );
 
-// ▼▼ LINHA QUE ESTAVA FALTANDO E FOI ADICIONADA ▼▼
 let historyTaskChain = Promise.resolve();
 
-// --- Funções Utilitárias ---
-const ensureDirectoryExists = (filePath) => {
-  const dirname = path.dirname(filePath);
-  if (!fs.existsSync(dirname)) {
-    fs.mkdirSync(dirname, { recursive: true });
+async function ensureDirectoryExists(dirPath) {
+  // (Esta função não precisa de cache)
+  console.log(`[API] Verificando/criando diretório: ${dirPath}`);
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+  } catch (error) {
+    console.error(`[API] Falha crítica ao criar diretório ${dirPath}:`, error);
   }
 };
-const readTargetsFromCSV = () => {
+
+// ====================================================================
+// CORREÇÃO: readTargetsFromCSV() agora usa CACHE
+// ====================================================================
+async function readTargetsFromCSV() {
+  // 1. Tenta ler do cache primeiro
+  const cachedTargets = myCache.get(CACHE_KEY_TARGETS);
+  if (cachedTargets) {
+    // console.log('[API] Lendo alvos do CACHE');
+    return cachedTargets;
+  }
+
+  // 2. Se não estiver no cache, lê do arquivo (lógica original)
+  console.log('[API] Lendo alvos do ARQUIVO (CSV)');
+  const csvFilePath = process.env.TARGETS_CSV_PATH || path.join(__dirname, 'data', 'targets.csv');
+  const dirPath = path.dirname(csvFilePath);
+  await ensureDirectoryExists(dirPath);
+
   try {
-    ensureDirectoryExists(CSV_PATH);
-    if (!fs.existsSync(CSV_PATH)) fs.writeFileSync(CSV_PATH, "", "utf-8");
-    const fileContent = fs.readFileSync(CSV_PATH, "utf-8");
-    if (!fileContent.trim()) return [];
-    return fileContent
-      .split("\n")
-      .filter((line) => line.trim())
-      .map((line) => {
-        const parts = line.split("|");
-        const displayName = parts[0] || "";
-        const target = parts[1] || "";
-        const isHighlighted = parts[2] === "true";
-        const safeId = target.replace(/[^a-zA-Z0-9]/g, "");
-        return { id: safeId, displayName, target, isHighlighted };
-      });
+    await fs.access(csvFilePath); 
+    const data = await fs.readFile(csvFilePath, 'utf8');
+    if (!data) {
+      return []; 
+    }
+    const lines = data.split('\n').filter(Boolean);
+    
+    const targets = lines.map(line => {
+      const parts = line.split('|');
+      if (parts.length < 2) return null;
+      const displayName = parts[0];
+      const target = parts[1];
+      const id = target;
+      const isHighlighted = parts[2] === 'true'; 
+      return { id, displayName, target, isHighlighted };
+    }).filter(Boolean);
+
+    // 3. Salva no cache antes de retornar
+    myCache.set(CACHE_KEY_TARGETS, targets);
+    return targets;
+
   } catch (error) {
-    console.error("Erro ao ler CSV:", error);
+    if (error.code === 'ENOENT') {
+      console.log('[API] Arquivo targets.csv não encontrado. Retornando [].');
+      return [];
+    }
+    console.error('[API] Erro ao ler ou processar o arquivo CSV:', error);
     return [];
   }
 };
+
+// ====================================================================
+// CORREÇÃO: writeTargetsToCSV() agora ATUALIZA o CACHE
+// ====================================================================
 const writeTargetsToCSV = (targets) => {
   try {
-    ensureDirectoryExists(CSV_PATH);
+    const dirPath = path.dirname(CSV_PATH);
+    try {
+      fsSync.mkdirSync(dirPath, { recursive: true });
+    } catch (e) {
+      console.error("[API] Erro síncrono ao criar diretório para CSV:", e);
+    }
+
     const csvContent = targets
       .map((t) => `${t.displayName}|${t.target}|${!!t.isHighlighted}`)
       .join("\n");
-    fs.writeFileSync(CSV_PATH, csvContent, "utf-8");
+      
+    fsSync.writeFileSync(CSV_PATH, csvContent, "utf-8");
+    
+    // 1. Atualiza o cache imediatamente após salvar
+    myCache.set(CACHE_KEY_TARGETS, targets);
+    console.log('[API] CSV de alvos salvo e cache atualizado.');
+
   } catch (error) {
     console.error("Erro ao escrever no CSV:", error);
+    // 2. Limpa o cache em caso de erro para forçar releitura
+    myCache.del(CACHE_KEY_TARGETS);
   }
 };
+
+// parseTracerouteOutput (Sem alteração)
 const parseTracerouteOutput = (output, slowHopThreshold = 25) => {
   const lines = output.split("\n");
   const hops = [];
@@ -93,36 +160,84 @@ const parseTracerouteOutput = (output, slowHopThreshold = 25) => {
     detailedHops: hops,
   };
 };
-const readHistory = async () => {
-  try {
-    if (!fs.existsSync(HISTORY_JSON_PATH)) return [];
-    const fileContent = await fs.promises.readFile(HISTORY_JSON_PATH, "utf-8");
-    if (!fileContent.trim()) return [];
-    return JSON.parse(fileContent);
-  } catch (error) {
-    console.error("Erro ao ler ou parsear o arquivo de histórico:", error);
-    return [];
+
+// ====================================================================
+// CORREÇÃO: readHistory() agora usa CACHE
+// ====================================================================
+async function readHistory() {
+  // 1. Tenta ler do cache primeiro
+  const cachedHistory = myCache.get(CACHE_KEY_HISTORY);
+  if (cachedHistory) {
+    // console.log('[API] Lendo histórico do CACHE');
+    return cachedHistory;
   }
-};
+
+  // 2. Se não estiver no cache, lê do arquivo (lógica original)
+  console.log('[API] Lendo histórico do ARQUIVO (JSON)');
+  const historyFilePath = process.env.HISTORY_FILE_PATH || path.join(__dirname, 'data', 'historico_traceroute', 'historico_traceroute.json');
+
+  try {
+    await fs.access(historyFilePath); 
+    const data = await fs.readFile(historyFilePath, 'utf8');
+    if (!data || data.trim() === '') {
+      console.warn(`[API] Arquivo de histórico (${historyFilePath}) está vazio. Retornando array vazio [].`);
+      return []; 
+    }
+
+    try {
+      const parsedData = JSON.parse(data);
+      // 3. Salva no cache antes de retornar
+      myCache.set(CACHE_KEY_HISTORY, parsedData);
+      return parsedData;
+    } catch (parseError) {
+      if (parseError instanceof SyntaxError) {
+        console.error(`[API] Arquivo de histórico (${historyFilePath}) está corrompido (JSON inválido). Retornando array vazio []. Erro: ${parseError.message}`);
+        return []; 
+      }
+      throw parseError; 
+    }
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      console.log(`[API] Arquivo de histórico (${historyFilePath}) não encontrado. Será criado. Retornando [].`);
+      return []; 
+    }
+    console.error('[API] Erro crítico ao ler o arquivo de histórico:', error);
+    return []; 
+  }
+}
+
+// ====================================================================
+// CORREÇÃO: writeHistory() agora ATUALIZA o CACHE
+// ====================================================================
 const writeHistory = async (data) => {
   try {
-    ensureDirectoryExists(HISTORY_JSON_PATH);
-    await fs.promises.writeFile(
+    const dirPath = path.dirname(HISTORY_JSON_PATH);
+    await ensureDirectoryExists(dirPath); 
+    
+    await fs.writeFile(
       HISTORY_JSON_PATH,
       JSON.stringify(data, null, 2),
       "utf-8"
     );
+    
+    // 1. Atualiza o cache imediatamente após salvar
+    myCache.set(CACHE_KEY_HISTORY, data);
+    console.log('[API] Histórico salvo e cache atualizado.');
+
   } catch (error) {
     console.error("Erro ao escrever no arquivo de histórico:", error);
+    // 2. Limpa o cache em caso de erro para forçar releitura
+    myCache.del(CACHE_KEY_HISTORY);
   }
 };
 
+// _internalLogHistory (Sem alteração, 'readHistory' e 'writeHistory' já estão corrigidos)
 const _internalLogHistory = async (result) => {
   if (!result.isHighlighted) return;
   if (!result.data || !result.data.detailedHops) {
     return;
   }
-  const history = await readHistory();
+  const history = await readHistory(); // Rápido (cache)
   const newHistoryEntry = {
     timestamp: new Date().toISOString(),
     target: result.target,
@@ -135,9 +250,10 @@ const _internalLogHistory = async (result) => {
   const prunedHistory = history.filter(
     (entry) => new Date(entry.timestamp) >= sevenDaysAgo
   );
-  await writeHistory(prunedHistory);
+  await writeHistory(prunedHistory); // Atualiza o cache
 };
 
+// logHistory (Sem alteração)
 const logHistory = (result) => {
   historyTaskChain = historyTaskChain
     .then(() => _internalLogHistory(result))
@@ -147,8 +263,9 @@ const logHistory = (result) => {
     });
 };
 
+// analyzeHistory (Sem alteração, 'readHistory' já está corrigido)
 const analyzeHistory = async (target, currentResultData) => {
-  const history = await readHistory();
+  const history = await readHistory(); // Rápido (cache)
   const targetHistory = history.filter(
     (entry) => entry.target === target && entry.data.detailedHops
   );
@@ -211,7 +328,10 @@ const analyzeHistory = async (target, currentResultData) => {
   }
   return analysis;
 };
+
+// analyzeHistoryForCharts (Sem alteração)
 const analyzeHistoryForCharts = (history) => {
+  // ... (toda a lógica de 'analyzeHistoryForCharts' permanece a mesma) ...
   const hourlyData = {
     labels: [],
     datasets: [
@@ -256,15 +376,12 @@ const analyzeHistoryForCharts = (history) => {
   const last24h = new Date(now.valueOf() - 24 * 60 * 60 * 1000);
   const last7d = new Date(now.valueOf() - 7 * 24 * 60 * 60 * 1000);
 
-  // Filtrar histórico das últimas 24 horas
   const hourlyHistory = history.filter(
     (entry) => new Date(entry.timestamp) >= last24h && entry.data.detailedHops
   );
 
-  // Agrupar dados por hora (últimas 24 horas)
   const hourlyAggregates = {};
 
-  // Inicializar todas as 24 horas com arrays vazios
   for (let i = 0; i < 24; i++) {
     const hourDate = new Date(now.valueOf() - (23 - i) * 60 * 60 * 1000);
     const hourLabel = hourDate.getHours().toString().padStart(2, "0") + "h";
@@ -272,13 +389,12 @@ const analyzeHistoryForCharts = (history) => {
       latencies: [],
       hops: [],
       routeChanges: 0,
-      routes: new Set(), // Para contar mudanças de rota únicas
+      routes: new Set(),
       hour: hourDate.getHours(),
       entries: [],
     };
   }
 
-  // Processar entradas do histórico
   hourlyHistory.forEach((entry) => {
     const entryDate = new Date(entry.timestamp);
     const hourLabel = entryDate.getHours().toString().padStart(2, "0") + "h";
@@ -288,7 +404,6 @@ const analyzeHistoryForCharts = (history) => {
       entry.data.detailedHops &&
       entry.data.detailedHops.length > 0
     ) {
-      // Calcular latência média desta entrada
       const avgLatency =
         entry.data.detailedHops.reduce((sum, h) => sum + h.latency, 0) /
         entry.data.detailedHops.length;
@@ -298,9 +413,8 @@ const analyzeHistoryForCharts = (history) => {
       hourlyAggregates[hourLabel].hops.push(entry.data.totalHops);
       hourlyAggregates[hourLabel].entries.push(entry);
 
-      // Contar mudanças de rota únicas nesta hora
       if (hourlyAggregates[hourLabel].routes.has(currentRoute)) {
-        // Rota já vista, não é uma mudança
+        // Rota já vista
       } else {
         hourlyAggregates[hourLabel].routes.add(currentRoute);
         if (hourlyAggregates[hourLabel].routes.size > 1) {
@@ -310,7 +424,6 @@ const analyzeHistoryForCharts = (history) => {
     }
   });
 
-  // Gerar dados do gráfico horário
   const sortedHours = Object.keys(hourlyAggregates).sort((a, b) => {
     return hourlyAggregates[a].hour - hourlyAggregates[b].hour;
   });
@@ -320,7 +433,6 @@ const analyzeHistoryForCharts = (history) => {
 
     hourlyData.labels.push(hourLabel);
 
-    // Média de latência da hora específica (ou 0 se não houver dados)
     const avgLatency =
       agg.latencies.length > 0
         ? agg.latencies.reduce((sum, lat) => sum + lat, 0) /
@@ -328,16 +440,15 @@ const analyzeHistoryForCharts = (history) => {
         : 0;
     hourlyData.datasets[0].data.push(parseFloat(avgLatency.toFixed(2)));
 
-    // Média de saltos da hora específica (ou 0 se não houver dados)
     const avgHops =
       agg.hops.length > 0
         ? agg.hops.reduce((sum, hop) => sum + hop, 0) / agg.hops.length
         : 0;
     hourlyData.datasets[1].data.push(parseFloat(avgHops.toFixed(1)));
 
-    // Número de mudanças de rota únicas detectadas na hora
     hourlyData.datasets[2].data.push(agg.routeChanges);
   });
+  
   const dailyAggregates = {};
   const dailyHistory = history.filter(
     (entry) => new Date(entry.timestamp) >= last7d && entry.data.detailedHops
@@ -360,7 +471,15 @@ const analyzeHistoryForCharts = (history) => {
     dailyAggregates[dayLabel].minLatencies.push(entry.data.fastestHop);
     dailyAggregates[dayLabel].count++;
   });
-  for (const day in dailyAggregates) {
+  
+  const sortedDays = Object.keys(dailyAggregates).sort((a, b) => {
+      const [dayA, monthA] = a.split('/').map(Number);
+      const [dayB, monthB] = b.split('/').map(Number);
+      if (monthA !== monthB) return monthA - monthB;
+      return dayA - dayB;
+  });
+
+  sortedDays.forEach(day => {
     const agg = dailyAggregates[day];
     dailyData.labels.push(day);
     dailyData.datasets[0].data.push(
@@ -368,61 +487,107 @@ const analyzeHistoryForCharts = (history) => {
     );
     dailyData.datasets[1].data.push(Math.max(...agg.maxLatencies));
     dailyData.datasets[2].data.push(Math.min(...agg.minLatencies));
-  }
+  });
+
   return { hourly: hourlyData, daily: dailyData };
 };
 
 // --- Endpoints da API ---
-router.get("/targets", (req, res) => {
-  res.json(readTargetsFromCSV());
+
+// GET /api/targets (Agora usa cache)
+router.get("/targets", async (req, res) => {
+  try {
+    const targetsFromCSV = await readTargetsFromCSV(); // Rápido (cache)
+    
+    if (!Array.isArray(targetsFromCSV)) {
+        console.error('[API] /api/targets: readTargetsFromCSV não retornou um array.');
+        res.json({ targets: [] }); 
+        return;
+    }
+    res.json({ targets: targetsFromCSV });
+
+  } catch (error) {
+    console.error('[API] Erro crítico na rota /api/targets:', error);
+    res.status(500).json({ error: 'Erro interno ao buscar alvos.' });
+  }
 });
-router.post("/targets", (req, res) => {
+
+// POST /api/targets (Agora atualiza o cache)
+router.post("/targets", async (req, res) => {
   const { displayName, target, isHighlighted } = req.body;
   if (!displayName || !target)
     return res
       .status(400)
       .json({ error: "displayName e target são obrigatórios" });
-  const targets = readTargetsFromCSV();
+  
+  const targets = await readTargetsFromCSV(); // Rápido (cache)
+
   if (targets.some((t) => t.target === target))
     return res.status(409).json({ error: "Este alvo já existe." });
-  targets.push({ displayName, target, isHighlighted: !!isHighlighted });
-  writeTargetsToCSV(targets);
+  
+  targets.push({ id: target, displayName, target, isHighlighted: !!isHighlighted }); 
+  
+  writeTargetsToCSV(targets); // Atualiza o cache
   res.status(201).json({ message: "Alvo adicionado com sucesso!" });
 });
-router.delete("/targets/:id", (req, res) => {
+
+// DELETE /api/targets/:id (Agora atualiza o cache)
+router.delete("/targets/:id", async (req, res) => {
   const { id } = req.params;
-  let targets = readTargetsFromCSV();
-  targets = targets.filter((t) => t.id !== id);
-  writeTargetsToCSV(targets);
+  let targets = await readTargetsFromCSV(); // Rápido (cache)
+  targets = targets.filter((t) => t.id !== id); 
+  writeTargetsToCSV(targets); // Atualiza o cache
   res.json({ message: "Alvo removido com sucesso!" });
 });
-router.put("/targets/:id", (req, res) => {
+
+// PUT /api/targets/:id (Agora atualiza o cache)
+router.put("/targets/:id", async (req, res) => {
   const { id } = req.params;
   const { displayName, target, isHighlighted } = req.body;
   if (!displayName || !target)
     return res
       .status(400)
       .json({ error: "displayName e target são obrigatórios" });
-  let targets = readTargetsFromCSV();
-  const index = targets.findIndex((t) => t.id === id);
-  if (index === -1)
-    return res.status(404).json({ error: "Alvo não encontrado." });
-  targets[index] = { displayName, target, isHighlighted: !!isHighlighted };
-  writeTargetsToCSV(targets);
+
+  let targets = await readTargetsFromCSV(); // Rápido (cache)
+  const index = targets.findIndex((t) => t.id === id); 
+  
+  if (index === -1) {
+    const oldIndex = targets.findIndex((t) => t.target === id);
+     if (oldIndex === -1) {
+        return res.status(404).json({ error: "Alvo não encontrado." });
+     }
+     targets[oldIndex].id = target; 
+     targets[oldIndex].displayName = displayName;
+     targets[oldIndex].target = target;
+     targets[oldIndex].isHighlighted = !!isHighlighted;
+  } else {
+    targets[index].id = target;
+    targets[index].displayName = displayName;
+    targets[index].target = target;
+    targets[index].isHighlighted = !!isHighlighted;
+  }
+  
+  writeTargetsToCSV(targets); // Atualiza o cache
   res.json({ message: "Alvo atualizado com sucesso!" });
 });
+
+// GET /api/settings (Sem alteração)
 router.get("/settings", (req, res) => {
   res.json({
     slowHopThreshold: process.env.SLOW_HOP_THRESHOLD || 25,
     refreshInterval: process.env.REFRESH_INTERVAL || 60,
   });
 });
+
+// POST /api/settings (Sem alteração)
 router.post("/settings", (req, res) => {
   const { slowHopThreshold, refreshInterval } = req.body;
   try {
-    let envContent = fs.existsSync(ENV_PATH)
-      ? fs.readFileSync(ENV_PATH, "utf-8")
+    let envContent = fsSync.existsSync(ENV_PATH)
+      ? fsSync.readFileSync(ENV_PATH, "utf-8")
       : "";
+      
     const lines = envContent.split("\n");
     let thresholdFound = false;
     let intervalFound = false;
@@ -440,7 +605,9 @@ router.post("/settings", (req, res) => {
     if (!thresholdFound)
       newLines.push(`SLOW_HOP_THRESHOLD=${slowHopThreshold}`);
     if (!intervalFound) newLines.push(`REFRESH_INTERVAL=${refreshInterval}`);
-    fs.writeFileSync(ENV_PATH, newLines.filter(Boolean).join("\n"));
+    
+    fsSync.writeFileSync(ENV_PATH, newLines.filter(Boolean).join("\n"));
+    
     process.env.SLOW_HOP_THRESHOLD = slowHopThreshold.toString();
     process.env.REFRESH_INTERVAL = refreshInterval.toString();
     res.json({ message: "Configurações salvas com sucesso!" });
@@ -449,11 +616,17 @@ router.post("/settings", (req, res) => {
     res.status(500).json({ error: "Falha ao salvar configurações." });
   }
 });
+
+// POST /api/traceroute/single (Agora usa cache e não retorna 500)
 router.post("/traceroute/single", async (req, res) => {
   const { target, displayName, id, isHighlighted, slowHopThreshold } = req.body;
   if (!target) {
     return res.status(400).json({ error: "Target é obrigatório" });
   }
+  
+  // O ID do card DEVE ser o target sanitizado
+  const cardId = target.replace(/[^a-zA-Z0-9]/g, "");
+
   try {
     const { stdout } = await execAsync(`traceroute ${target}`, {
       timeout: 45000,
@@ -462,9 +635,12 @@ router.post("/traceroute/single", async (req, res) => {
       stdout,
       slowHopThreshold || process.env.SLOW_HOP_THRESHOLD
     );
-    const analysis = await analyzeHistory(target, parsedData);
+    
+    // analyzeHistory() agora é rápido (usa cache)
+    const analysis = await analyzeHistory(target, parsedData); 
+    
     const fullResult = {
-      id,
+      id: cardId, // Usa o cardId sanitizado
       displayName,
       target,
       isHighlighted,
@@ -472,26 +648,29 @@ router.post("/traceroute/single", async (req, res) => {
       data: parsedData,
       analysis,
     };
-    logHistory(fullResult);
-    res.json(fullResult);
+    logHistory(fullResult); // Atualiza o histórico (e o cache)
+    res.json(fullResult); // Retorna 200 OK
   } catch (error) {
+    console.error(`[API] Falha no traceroute para ${target}:`, error.message);
     const errorResult = {
-      id,
+      id: cardId, // Usa o cardId sanitizado
       displayName,
       target,
       isHighlighted,
       success: false,
-      error: "Erro de execução",
+      error: error.message.includes("unknown host") ? "Host desconhecido" : "Erro de execução",
     };
     logHistory(errorResult);
-    res.status(500).json(errorResult);
+    res.json(errorResult); // Retorna 200 OK (com falha)
   }
 });
+
+// GET /api/history/targets (Agora usa cache)
 router.get("/history/targets", async (req, res) => {
-  const history = await readHistory();
+  const history = await readHistory(); // Rápido (cache)
   const uniqueTargets = history.reduce((acc, entry) => {
-    const safeId = entry.target.replace(/[^a-zA-Z0-9]/g, "");
-    if (!acc.has(safeId)) {
+    const safeId = entry.target; 
+    if (safeId && !acc.has(safeId)) {
       acc.set(safeId, {
         id: safeId,
         displayName: entry.displayName,
@@ -502,19 +681,21 @@ router.get("/history/targets", async (req, res) => {
   }, new Map());
   res.json(Array.from(uniqueTargets.values()));
 });
+
+// GET /api/history/charts/:targetId/:type (Agora usa cache)
 router.get("/history/charts/:targetId/:type", async (req, res) => {
   const { targetId, type } = req.params;
-  const history = await readHistory();
+  const history = await readHistory(); // Rápido (cache)
+  
   const targetHistory = history.filter(
-    (entry) => entry.target.replace(/[^a-zA-Z0-9]/g, "") === targetId
+    (entry) => entry.target === targetId
   );
+  
   if (targetHistory.length < 2) {
-    // Retorne JSON mesmo em erros para evitar falhas de parse no frontend
     return res.status(404).json({
-      success: false,
-      error: "Histórico insuficiente para gerar gráfico.",
-      chartData: null,
-      chartConfig: null,
+        success: false,
+        error: "Histórico insuficiente para gerar gráfico.",
+        message: `Buscando por ID=${targetId}, encontrados ${targetHistory.length} registros.`
     });
   }
 
@@ -525,26 +706,9 @@ router.get("/history/charts/:targetId/:type", async (req, res) => {
       ? `Médias por Hora (24h) - ${targetHistory[0].displayName}`
       : `Métricas por Dia (7d) - ${targetHistory[0].displayName}`;
 
-  // Retornar dados JSON para o frontend renderizar os gráficos
   const chartConfig = {
     type: "line",
     data: data,
-    options: {
-      plugins: {
-        legend: { labels: { color: "#d8d9da" } },
-        title: {
-          display: true,
-          text: title,
-          color: "#d8d9da",
-          padding: 20,
-          font: { size: 16 },
-        },
-      },
-      scales: {
-        y: { ticks: { color: "#8e8e8e" }, grid: { color: "#323236" } },
-        x: { ticks: { color: "#8e8e8e" }, grid: { color: "#323236" } },
-      },
-    },
   };
 
   try {
@@ -570,42 +734,36 @@ app.use(express.json());
 app.use(express.static("public"));
 app.use("/api", router);
 
-// Configurações do servidor a partir do .env
 const HTTP_PORT = process.env.HTTP_PORT || 3055;
 const HTTPS_PORT = process.env.HTTPS_PORT || 3056;
 const ENABLE_HTTPS = process.env.ENABLE_HTTPS === 'true';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
 
-// Função para verificar se os certificados SSL existem
 const checkSSLCertificates = () => {
   if (!SSL_CERT_PATH || !SSL_KEY_PATH) {
     return false;
   }
-  
   try {
-    return fs.existsSync(SSL_CERT_PATH) && fs.existsSync(SSL_KEY_PATH);
+    return fsSync.existsSync(SSL_CERT_PATH) && fsSync.existsSync(SSL_KEY_PATH);
   } catch (error) {
     console.warn("⚠️  Erro ao verificar certificados SSL:", error.message);
     return false;
   }
 };
 
-// Inicializar servidor HTTP
 const httpServer = http.createServer(app);
 httpServer.listen(HTTP_PORT, () => {
   console.log(`✅ Servidor HTTP rodando na porta ${HTTP_PORT}`);
   console.log(`🌐 Acesse: http://localhost:${HTTP_PORT}`);
 });
 
-// Inicializar servidor HTTPS (se habilitado e certificados disponíveis)
 if (ENABLE_HTTPS && checkSSLCertificates()) {
   try {
     const sslOptions = {
-      cert: fs.readFileSync(SSL_CERT_PATH),
-      key: fs.readFileSync(SSL_KEY_PATH)
+      cert: fsSync.readFileSync(SSL_CERT_PATH),
+      key: fsSync.readFileSync(SSL_KEY_PATH)
     };
-    
     const httpsServer = https.createServer(sslOptions, app);
     httpsServer.listen(HTTPS_PORT, () => {
       console.log(`✅ Servidor HTTPS rodando na porta ${HTTPS_PORT}`);
