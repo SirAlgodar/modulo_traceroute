@@ -201,6 +201,14 @@ Todos os endpoints são prefixados com `/api`.
 
 * **Resposta (404 Not Found):** Ocorre se não houver histórico suficiente (menos de 2 registros) para gerar um gráfico.
 
+## **Arquivos do Dashboard Grafana**
+
+* O arquivo `.json`: [MONITORAMENTO DE SALTOS - VERSÃO FINAL v2-1763062811850.json](./MONITORAMENTO DE SALTOS - VERSÃO FINAL v2-1763062811850.json) — Contém a configuração completa do dashboard do Grafana.
+* O arquivo `.pdf`: [DASHBOARD MONITORAMENTO DE SALTOS _ Guia do Usuário.pdf](./DASHBOARD MONITORAMENTO DE SALTOS _ Guia do Usuário.pdf) — Documentação detalhada explicando:
+  * Todas as funcionalidades implementadas no dashboard
+  * Configurações necessárias para o correto funcionamento
+  * Guia passo a passo para implantação
+
 ## **Configurando como um Serviço no Debian (systemd)**
 
 Para garantir que sua aplicação inicie automaticamente com o servidor e seja gerenciada de forma robusta (com reinicialização automática em caso de falhas), você pode configurá-la como um serviço systemd.
@@ -265,4 +273,3 @@ Agora você pode usar os comandos systemctl padrão:
 
 | journalctl \-u traceroute-monitor.service \-f |
 | :---- |
-
